@@ -1,0 +1,41 @@
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+# Notebooks
+jupyterlab
+ipykernel
+ipywidgets
+
+# Core
+numpy
+numba
+pandas
+matplotlib
+seaborn
+tqdm
+pyyaml
+python-dotenv
+rich
+
+# Training
+torch
+torchvision
+torchaudio
+transformers
+tokenizers
+datasets
+accelerate
+safetensors
+sentencepiece
+einops
+tiktoken
+
+# Experiment tracking
+wandb
+
+# Document extraction
+pymupdf
+pypdf
+pillow
+
+# Chemistry
+rdkit

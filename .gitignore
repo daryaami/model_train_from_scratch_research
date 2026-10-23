@@ -219,4 +219,16 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-data/
+docs/
+.vscode/
+.tools/
+
+# Keep the directory in git, ignore everything inside it.
+data/*
+!data/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+checkpoints/*
+!checkpoints/.gitkeep
