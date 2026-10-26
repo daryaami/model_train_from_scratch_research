@@ -3,8 +3,9 @@
 
 Reads parquet row groups from HuggingFaceFW/fineweb-2 rus_Cyrl over HTTP,
 keeps documents that pass the same strict_keep screen as notebooks/eda.ipynb,
-and stops near 1e9 estimated tokens (characters / 2.5). That is about 20
-tokens per parameter for a 50M model.
+and stops near --target-tokens. The default, 1e9 at 2.5 characters per token,
+is the first slice. A later slice passes the measured BPE rate,
+3.96 characters per token, and a larger --target-tokens.
 
 Outputs:
   data/fineweb2/rus_Cyrl/v001/parts/part-*.parquet
@@ -340,13 +341,12 @@ def write_manifest(out_dir: Path, state: dict) -> Path:
     except ValueError:
         load_path = str(parts_dir)
     manifest = {
-        "name": "fineweb2-rus-v001",
+        "name": f"fineweb2-rus-{out_dir.name}",
         "status": "complete",
         "description": (
-            "Русский учебный корпус для модели на 50–100M параметров. "
-            "Объём около 1 млрд токенов: это примерно 20 токенов на параметр для модели 50M "
-            "и 10 токенов на параметр для модели 100M. Токены пока оценены как символы / 2.5, "
-            "до появления отдельного русского токенизатора. Текст сохранён строками."
+            "Русский учебный корпус, текст строками. "
+            f"Цель {int(state['target_tokens'])} токенов при оценке "
+            f"{float(state.get('chars_per_token', CHARS_PER_TOKEN)):g} символа на токен."
         ),
         "created_at": state["started_at"],
         "finished_at": now_iso(),
@@ -429,12 +429,21 @@ def count_domains(parts_dir: Path, parts: list[dict]) -> int:
     return len(hosts)
 
 
-def new_state(revision: str, seed: int, target_tokens: int, groups_per_file: int, file_order: list[str], command: str) -> dict:
+def new_state(
+    revision: str,
+    seed: int,
+    target_tokens: int,
+    chars_per_token: float,
+    groups_per_file: int,
+    file_order: list[str],
+    command: str,
+) -> dict:
     rng = random.Random(seed)
     return {
         "revision": revision,
         "seed": seed,
         "target_tokens": target_tokens,
+        "chars_per_token": chars_per_token,
         "groups_per_file": groups_per_file,
         "file_order": file_order,
         "command": command,
@@ -463,7 +472,17 @@ def new_state(revision: str, seed: int, target_tokens: int, groups_per_file: int
     }
 
 
-def build(out_dir: Path, target_tokens: int, seed: int, groups_per_file: int, revision: str | None, refresh: bool) -> None:
+def build(
+    out_dir: Path,
+    target_tokens: int,
+    seed: int,
+    groups_per_file: int,
+    revision: str | None,
+    refresh: bool,
+    chars_per_token: float,
+) -> None:
+    global CHARS_PER_TOKEN
+    CHARS_PER_TOKEN = float(chars_per_token)
     manifest_path = out_dir / "manifest.json"
     state_path = out_dir / "_state.json"
     if refresh and out_dir.exists():
@@ -487,6 +506,7 @@ def build(out_dir: Path, target_tokens: int, seed: int, groups_per_file: int, re
             revision=revision,
             seed=seed,
             target_tokens=target_tokens,
+            chars_per_token=CHARS_PER_TOKEN,
             groups_per_file=groups_per_file,
             file_order=file_order,
             command=" ".join(sys.argv),
@@ -494,9 +514,15 @@ def build(out_dir: Path, target_tokens: int, seed: int, groups_per_file: int, re
         save_state(state_path, state)
         print(f"revision {revision}  train files {len(file_order):,}", flush=True)
     else:
-        if state["seed"] != seed or state["target_tokens"] != target_tokens:
+        saved_rate = round(float(state.get("chars_per_token", 2.5)), 6)
+        if (
+            state["seed"] != seed
+            or state["target_tokens"] != target_tokens
+            or saved_rate != round(CHARS_PER_TOKEN, 6)
+        ):
             raise SystemExit(
-                "v001 already has a different seed or target. Use --refresh or another --out directory."
+                "This output already has a different seed, target, or chars-per-token. "
+                "Use --refresh or another --out directory."
             )
         revision = state["revision"]
         print(
@@ -605,6 +631,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--target-tokens", type=int, default=TARGET_TOKENS)
+    parser.add_argument(
+        "--chars-per-token",
+        type=float,
+        default=CHARS_PER_TOKEN,
+        help="Stop when kept characters reach target-tokens times this rate. Measured BPE is 3.96.",
+    )
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--groups-per-file", type=int, default=GROUPS_PER_FILE)
     parser.add_argument("--revision", default=None, help="Hugging Face dataset revision. Default: current main sha, then frozen in the build.")
@@ -617,6 +649,7 @@ def main() -> None:
         groups_per_file=args.groups_per_file,
         revision=args.revision,
         refresh=args.refresh,
+        chars_per_token=args.chars_per_token,
     )
 
 

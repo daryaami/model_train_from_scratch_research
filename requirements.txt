@@ -23,6 +23,7 @@ torchaudio
 transformers
 tokenizers
 datasets
+language-tool-python
 accelerate
 safetensors
 sentencepiece

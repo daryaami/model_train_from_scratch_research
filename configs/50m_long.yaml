@@ -1,0 +1,51 @@
+# 46.9M на срезе v002 и окне 2048. Форма сети та же, что в configs/50m.yaml.
+# max_steps — оценка одного прохода, пока нет train.bin. Перед запуском
+# заменить на длину train, делённую на токены шага.
+
+model:
+  vocab_size: 16000
+  hidden_size: 320
+  n_layers: 30
+  n_heads: 5
+  context: 2048              # средний документ 1431 токен, p75 — 1267; в 512 он не влезает
+  rope_theta: 10000
+  rms_eps: 1.0e-5
+  swiglu_multiple_of: 256
+
+train:
+  seed: 22
+  batch_size: 4              # 4 × 2048 = 8192 токена в микробатче, вдвое больше прогона на 512
+  grad_accum: 4              # на шаге 4 × 4 × 2048 = 32 768 токенов, как у прогона на 512
+  max_steps: 35241           # оценка: 98% от 1.178 млрд / 32 768. Уточнить по tokens/train.bin
+  grad_clip: 1.0
+  weight_decay: 0.1
+  betas: [0.9, 0.95]
+  eval_interval: 100
+  eval_batches: 8
+  save_interval: 500
+  log_interval: 10
+  gen_new_tokens: 64
+  final_new_tokens: 128
+  sample_temperature: 0.8
+  dtype: float32
+
+eval:
+  prompts:
+    - "Однажды в"
+    - "В 2020 году"
+    - "Россия"
+    - "Он сказал, что"
+
+schedule:
+  name: wsd
+  peak_lr: 0.0003
+  min_lr: 0.00003
+  warmup_frac: 0.01
+  stable_frac: 0.89
+  decay_frac: 0.10
+  decay: cosine
+
+paths:
+  dataset: data/fineweb2/rus_Cyrl/v002/dataset
+  tokenizer: tokenizers/fineweb2_rus_v001/chosen
+  checkpoint_dir: checkpoints

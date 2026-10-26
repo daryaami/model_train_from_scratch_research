@@ -1,0 +1,68 @@
+{
+  "table_of_contents": [
+    {
+      "title": "\u00a7 VI.3. \u0425\u0418\u041c\u0418\u0427\u0415\u0421\u041a\u041e\u0415 \u0420\u0410\u0412\u041d\u041e\u0412\u0415\u0421\u0418\u0415 \u0412 \u0420\u0410\u0421\u0422\u0412\u041e\u0420\u0410\u0425",
+      "heading_level": null,
+      "page_id": 0,
+      "polygon": [
+        [
+          17.683679443359374,
+          16.896
+        ],
+        [
+          585.4228615722657,
+          16.896
+        ],
+        [
+          585.4228615722657,
+          43.008
+        ],
+        [
+          17.683679443359374,
+          43.008
+        ]
+      ]
+    }
+  ],
+  "page_stats": [
+    {
+      "page_id": 0,
+      "text_extraction_method": "surya",
+      "block_counts": [
+        [
+          "Text",
+          16
+        ],
+        [
+          "ChemicalBlock",
+          8
+        ],
+        [
+          "Equation",
+          4
+        ],
+        [
+          "SectionHeader",
+          2
+        ],
+        [
+          "Footnote",
+          2
+        ],
+        [
+          "PageFooter",
+          2
+        ]
+      ],
+      "block_metadata": {
+        "llm_request_count": 0,
+        "llm_error_count": 0,
+        "llm_tokens_used": 0,
+        "previous_text": "",
+        "previous_type": "",
+        "previous_order": 0
+      }
+    }
+  ],
+  "debug_data_path": "debug_data/general"
+}

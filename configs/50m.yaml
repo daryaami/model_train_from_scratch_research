@@ -1,0 +1,49 @@
+# Модель около 50M: 30 слоёв, ширина 320. Корпус, окно и расписание те же, что у 10.9M.
+
+model:
+  vocab_size: 16000          # зафиксированный BPE, тот же, что в chosen/
+  hidden_size: 320           # уже, чем 512, чтобы тридцать слоёв уложились около 50M
+  n_layers: 30
+  n_heads: 5                 # 320 / 5 = 64 числа на голову
+  context: 512               # длина окна; документы длиннее режутся потоком, не отбрасываются
+  rope_theta: 10000          # база частот RoPE
+  rms_eps: 1.0e-5            # добавка под корнем RMSNorm, чтобы не делить на ноль
+  swiglu_multiple_of: 256    # внутренняя ширина SwiGLU округляется вверх до этого шага
+
+train:
+  seed: 22                   # тот же сид, что у корпуса и разбиения
+  batch_size: 8              # окон в одном микробатче
+  grad_accum: 8              # сколько микробатчей складывается в один шаг
+  max_steps: 18955            # один проход по train: 18955 * 32768 = 621 117 440 токенов
+  grad_clip: 1.0             # потолок нормы градиента
+  weight_decay: 0.1          # только на матрицах, не на RMSNorm
+  betas: [0.9, 0.95]
+  eval_interval: 100         # как часто считать короткий validation и писать генерации
+  eval_batches: 8            # сколько батчей этого куска, не весь файл
+  save_interval: 500         # шаг для last.pt и step_XXXXXXX.pt; best.pt пишется отдельно
+  log_interval: 10
+  gen_new_tokens: 64         # жадная длина на шагах validation
+  final_new_tokens: 128      # длина листа в конце: жадно и один сэмпл
+  sample_temperature: 0.8    # температура этого сэмпла; сид — train.seed
+  dtype: float32
+
+eval:
+  prompts:                   # один и тот же лист на всех шагах и в конце
+    - "Однажды в"
+    - "В 2020 году"
+    - "Россия"
+    - "Он сказал, что"
+
+schedule:
+  name: wsd                  # wsd или cosine
+  peak_lr: 0.0003
+  min_lr: 0.00003            # пол, до которого опускается спад
+  warmup_frac: 0.01          # 189 шагов до пика; на пилоте хватало порядка 100
+  stable_frac: 0.89          # длинная полка на peak_lr
+  decay_frac: 0.10           # короткий спад, 1897 шагов; вместе с двумя предыдущими даёт 1
+  decay: cosine              # форма спада внутри WSD: cosine или linear
+
+paths:
+  dataset: data/fineweb2/rus_Cyrl/v001/dataset
+  tokenizer: tokenizers/fineweb2_rus_v001/chosen
+  checkpoint_dir: checkpoints          # родитель: каждый прогон создаёт внутри свою папку и старые не затирает

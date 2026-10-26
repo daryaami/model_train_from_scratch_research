@@ -1,0 +1,11 @@
+.venv/
+.venv-marker/
+.venv-docling/
+.venv-mineru/
+.venv-mineru34/
+.venv-vlm/
+.cache/
+.tools/
+sample/pages/
+results/text/
+results/logs/
