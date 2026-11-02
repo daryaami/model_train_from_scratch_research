@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Freeze the train / validation / test token streams for fineweb2-rus-v001.
+"""Freeze the train / validation / test token streams.
 
-The corpus and the 16k tokenizer are already fixed. This script checks that
-freeze, splits documents 98/1/1, drops exact copies and near-copies that would
-leak into the held-out splits, and writes a uint16 token stream with an EOS
-after every kept document.
+The 16k tokenizer is fixed. The default corpus is fineweb2-rus-v001, and its
+part hashes must match tokenizers/fineweb2_rus_v001/chosen/choice.json.
+--corpus points at another directory with the same layout (manifest.json and
+parts/part-*.parquet with columns id and text). That path checks hashes
+against its own manifest and does not touch choice.json.
 
-Outputs, under data/fineweb2/rus_Cyrl/v001/dataset/:
+The script splits documents 98/1/1, drops exact copies and near-copies that
+would leak into the held-out splits, and writes a uint16 token stream with an
+EOS after every kept document.
+
+Outputs, under <corpus>/dataset/ unless --out is set:
   manifest.json
   assignments.parquet
   duplicates.jsonl
@@ -41,7 +46,8 @@ import pyarrow.parquet as pq
 from tokenizers import Tokenizer
 
 ROOT = Path(__file__).resolve().parents[1]
-CORPUS_DIR = ROOT / "data" / "fineweb2" / "rus_Cyrl" / "v001"
+FINEWEB_CORPUS = ROOT / "data" / "fineweb2" / "rus_Cyrl" / "v001"
+CORPUS_DIR = FINEWEB_CORPUS
 PARTS_DIR = CORPUS_DIR / "parts"
 CORPUS_MANIFEST = CORPUS_DIR / "manifest.json"
 CHOSEN_DIR = ROOT / "tokenizers" / "fineweb2_rus_v001" / "chosen"
@@ -540,7 +546,22 @@ def verify_tokenizer_files() -> str:
     return sha256_file(chosen)
 
 
-def verify_corpus() -> dict:
+def bind_corpus(corpus: Path) -> bool:
+    """Point the module paths at a corpus directory.
+
+    Returns True when this is the frozen FineWeb corpus, whose part hashes
+    still have to match choice.json. Any other directory is checked against
+    its own manifest and does not read the FineWeb fingerprint.
+    """
+    global CORPUS_DIR, PARTS_DIR, CORPUS_MANIFEST
+    CORPUS_DIR = corpus if corpus.is_absolute() else (ROOT / corpus)
+    CORPUS_DIR = CORPUS_DIR.resolve()
+    PARTS_DIR = CORPUS_DIR / "parts"
+    CORPUS_MANIFEST = CORPUS_DIR / "manifest.json"
+    return CORPUS_DIR == FINEWEB_CORPUS.resolve()
+
+
+def verify_corpus(use_frozen_choice: bool) -> dict:
     if not CORPUS_MANIFEST.exists():
         raise SystemExit(f"Missing corpus manifest: {rel(CORPUS_MANIFEST)}")
     choice_path = CHOSEN_DIR / "choice.json"
@@ -550,7 +571,12 @@ def verify_corpus() -> dict:
         raise SystemExit("choice.json is not the frozen bpe-16000 tokenizer.")
     if corpus_manifest.get("status") != "complete":
         raise SystemExit("Corpus manifest is not complete.")
-    fingerprint = choice["corpus"]["fingerprint"]
+    if use_frozen_choice:
+        fingerprint = choice["corpus"]["fingerprint"]
+    else:
+        fingerprint = corpus_manifest.get("parts")
+        if not isinstance(fingerprint, list) or not fingerprint:
+            raise SystemExit("Corpus manifest has no parts to fingerprint.")
     expected_names = [item["file"] for item in fingerprint]
     actual_names = sorted(path.name for path in PARTS_DIR.glob("part-*.parquet"))
     if actual_names != expected_names:
@@ -565,8 +591,13 @@ def verify_corpus() -> dict:
         if rows != int(item["rows"]):
             raise SystemExit(f"{item['file']} row count does not match the fingerprint.")
     n_docs = sum(int(item["rows"]) for item in fingerprint)
-    if n_docs != int(corpus_manifest["totals"]["kept_docs"]) or n_docs != N_DOCS_EXPECTED:
-        raise SystemExit(f"Frozen corpus has {n_docs} documents, expected {N_DOCS_EXPECTED}.")
+    if use_frozen_choice:
+        if n_docs != int(corpus_manifest["totals"]["kept_docs"]) or n_docs != N_DOCS_EXPECTED:
+            raise SystemExit(f"Frozen corpus has {n_docs} documents, expected {N_DOCS_EXPECTED}.")
+    elif n_docs != int(corpus_manifest["totals"]["kept_docs"]):
+        raise SystemExit(
+            f"Corpus has {n_docs} documents, manifest totals say {corpus_manifest['totals']['kept_docs']}."
+        )
     return {
         "choice": choice,
         "corpus_manifest": corpus_manifest,
@@ -668,11 +699,15 @@ def scan_documents(freeze: dict, space_bitmap: np.ndarray, coefficients_a: np.nd
     sha = np.empty((n_docs, 32), dtype=np.uint8)
     signatures = np.empty((n_docs, N_PERM), dtype=np.uint64)
     n_chars = np.empty(n_docs, dtype=np.int32)
-    part_of = np.empty(n_docs, dtype=np.uint8)
+    # uint16: a corpus of short documents can exceed 255 parts. The index is
+    # only used in memory; assignments.parquet stores the part file name.
+    part_of = np.empty(n_docs, dtype=np.uint16)
     row_of = np.empty(n_docs, dtype=np.int32)
     index = 0
     started = time.perf_counter()
     for part_index, (part_name, part_rows) in enumerate(zip(freeze["part_names"], freeze["part_rows"])):
+        if part_index > np.iinfo(np.uint16).max:
+            raise RuntimeError(f"Part index {part_index} does not fit in uint16.")
         path = PARTS_DIR / part_name
         parquet = pq.ParquetFile(path)
         row = 0
@@ -967,7 +1002,7 @@ def write_outputs(
     tokens_with_eos = sum(item["tokens"] for item in splits.values())
     kept_docs = n_docs - discarded
     manifest = {
-        "name": "fineweb2-rus-v001-dataset",
+        "name": f"{freeze['corpus_manifest']['name']}-dataset",
         "status": "complete",
         "description": (
             "Зафиксированный учебный датасет: BPE 16 000, разбиение 98/1/1 сидом 22, "
@@ -1095,7 +1130,7 @@ def dataset_is_current(out_dir: Path, freeze: dict, tokenizer_sha256: str) -> di
     return manifest
 
 
-def prepare(out_dir: Path, refresh: bool) -> None:
+def prepare(out_dir: Path, refresh: bool, use_frozen_choice: bool) -> None:
     started_at = now_iso()
     tokenizer_sha256 = verify_tokenizer_files()
     tokenizer = load_tokenizer()
@@ -1104,7 +1139,7 @@ def prepare(out_dir: Path, refresh: bool) -> None:
     coefficients_a, coefficients_b = minhash_coefficients(SEED)
     self_check(space_bitmap, coefficients_a, coefficients_b)
     print("self-check ok", flush=True)
-    freeze = verify_corpus()
+    freeze = verify_corpus(use_frozen_choice)
     print("corpus fingerprint ok", flush=True)
     if refresh and out_dir.exists():
         shutil.rmtree(out_dir)
@@ -1188,10 +1223,16 @@ def prepare(out_dir: Path, refresh: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--corpus", type=Path, default=FINEWEB_CORPUS, help="Corpus directory with manifest.json and parts/.")
+    parser.add_argument("--out", type=Path, default=None, help="Dataset directory. Default: <corpus>/dataset.")
     parser.add_argument("--refresh", action="store_true")
     args = parser.parse_args()
-    prepare(args.out, args.refresh)
+    use_frozen_choice = bind_corpus(args.corpus)
+    if args.out is None:
+        out_dir = CORPUS_DIR / "dataset"
+    else:
+        out_dir = args.out if args.out.is_absolute() else ROOT / args.out
+    prepare(out_dir, args.refresh, use_frozen_choice)
 
 
 if __name__ == "__main__":
