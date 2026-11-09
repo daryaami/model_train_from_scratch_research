@@ -76,6 +76,7 @@ def document_to_markdown(
     force: bool = False,
     ledger_source: str | Path | None = None,
     ledger_pages: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """Convert a local document or an http(s) URL to Markdown.
 
@@ -114,7 +115,7 @@ def document_to_markdown(
     started = time.monotonic()
     directory: Path | None = None
     try:
-        client = _Client(_api_key(), on_status)
+        client = _Client(api_key or _api_key(), on_status)
         text, md_path, directory = client.convert(
             source,
             model_version=model_version,
@@ -166,10 +167,8 @@ def document_to_markdown(
             shutil.rmtree(directory, ignore_errors=True)
 
 
-def _api_key() -> str:
-    key = os.environ.get("MINERU_API_KEY", "").strip().strip('"').strip("'")
-    if key:
-        return key
+def _env_map() -> dict[str, str]:
+    values: dict[str, str] = {}
     env_path = ROOT / ".env"
     if env_path.is_file():
         for raw in env_path.read_text(encoding="utf-8").splitlines():
@@ -177,12 +176,42 @@ def _api_key() -> str:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             name, value = line.split("=", 1)
-            if name.strip() == "MINERU_API_KEY":
-                key = value.strip().strip('"').strip("'")
-                break
+            values[name.strip()] = value.strip().strip('"').strip("'")
+    for name, value in os.environ.items():
+        if name.startswith("MINERU_API_KEY"):
+            cleaned = value.strip().strip('"').strip("'")
+            if cleaned:
+                values[name] = cleaned
+    return values
+
+
+def _api_key(name: str = "MINERU_API_KEY") -> str:
+    key = _env_map().get(name, "").strip()
     if not key:
-        raise MinerUError("MINERU_API_KEY is missing from the environment and from .env")
+        raise MinerUError(f"{name} is missing from the environment and from .env")
     return key
+
+
+def load_api_keys() -> list[tuple[str, str]]:
+    """Named MinerU tokens from the environment and .env."""
+    values = _env_map()
+    found: list[tuple[str, str]] = []
+    for name in ("MINERU_API_KEY", "MINERU_API_KEY_2"):
+        key = values.get(name, "").strip()
+        if key:
+            found.append((name, key))
+    extra = sorted(
+        name
+        for name in values
+        if name.startswith("MINERU_API_KEY_") and name not in {"MINERU_API_KEY_2"}
+    )
+    for name in extra:
+        key = values.get(name, "").strip()
+        if key:
+            found.append((name, key))
+    if not found:
+        raise MinerUError("MINERU_API_KEY is missing from the environment and from .env")
+    return found
 
 
 def _status(callback: Callable[[str], None] | None, message: str) -> None:
