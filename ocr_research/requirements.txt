@@ -1,0 +1,11 @@
+# Линейные движки сравнения: ocr_research/.venv и run_bench.py.
+# Marker, Docling, MinerU и VLM в этот файл не входят.
+# У них разные torch и transformers, каждый живёт в своём venv.
+# Команды установки — в README.md рядом.
+
+numpy==2.5.4
+pillow==13.0.0
+rapidocr==3.10.0
+RapidFuzz==3.14.6
+onnxruntime==1.31.0
+pypdf==6.21.2

@@ -1,42 +1,27 @@
 --extra-index-url https://download.pytorch.org/whl/cu128
 
-# Notebooks
-jupyterlab
-ipykernel
-ipywidgets
+# Ноутбуки
+jupyterlab==4.1.6
+ipykernel==7.4.0
+ipywidgets==8.1.9
 
-# Core
-numpy
-numba
-pandas
-matplotlib
-seaborn
-tqdm
-pyyaml
-python-dotenv
-rich
+# Корпуса и обучение. Версии совпадают с conda-окружением research_chemistry (Python 3.12).
+numpy==2.5.2
+numba==0.68.0
+pandas==3.0.6
+pyarrow==26.0.0
+matplotlib==3.11.2
+seaborn==0.13.2
+PyYAML==6.0.3
+python-dotenv==1.2.4
 
-# Training
-torch
-torchvision
-torchaudio
-transformers
-tokenizers
-datasets
-language-tool-python
-accelerate
-safetensors
-sentencepiece
-einops
-tiktoken
+torch==2.11.0+cu128
+tokenizers==0.23.3
+transformers==5.20.2
+datasets==5.1.0
+huggingface_hub==2.2.0
+language-tool-python==3.4.0
 
-# Experiment tracking
-wandb
-
-# Document extraction
-pymupdf
-pypdf
-pillow
-
-# Chemistry
-rdkit
+# Облачный прогон MinerU режет PDF этим пакетом. Страницы выборки рисует Pillow.
+pypdf==6.21.2
+pillow==12.3.0
